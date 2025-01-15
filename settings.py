@@ -203,7 +203,7 @@ def initialize_channel_settings(username: str, channel_name: str):
 def update_next_upload_date(username: str, channel_name: str):
     """Update the next_upload_date by adding 1 day"""
     client = MongoClient(
-        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+        '***************',
         tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
@@ -229,7 +229,7 @@ def update_next_upload_date(username: str, channel_name: str):
 def get_channel_names(username: str) -> list:
     """Get a list of all channel names for a given username"""
     client = MongoClient(
-        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+        '***************',
         tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
@@ -302,7 +302,7 @@ def duplicate_channel(username: str, source_channel: str, new_channel_name: str)
         new_channel_name (str): Name for the new duplicate channel
     """
     client = MongoClient(
-        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+        '***************',
         tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
