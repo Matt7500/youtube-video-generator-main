@@ -1,8 +1,7 @@
 
 # Story Narration Video Generator
 
-This is a program I developed to automatically create horror story narration YouTube videos (it can work with other story genres as well).
-
+This is a program I developed to automatically create horror story narration YouTube videos (it can work with other story genres as well). I began development on this program a bit over a year ago as a personal project so that's why it was never public or on github.
 
 This is made possible through the use of the following services:
 
