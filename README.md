@@ -40,6 +40,6 @@ Video Generation
 
 - Then, the video generation starts by creating an AI voiceover using the ElevenLabs API. It breaks up the scenes into 5 paragaph segments in order to maintain consistency in the voice quality, then they are stitched back together.
 
-- Once the audio is finished then the program will start (or create) and AWS EC2 instance where the video will be generated on for the compute power and the incredibly fast upload speed so the videos can be uploaded instantly from anywhere in the world, no matter my internet speed.
+- Once the audio is finished then the program will start (or create and fully set up) an AWS EC2 instance where the video will be generated on for the compute power and the fast upload speed so the videos can be uploaded instantly from anywhere in the world, no matter my internet speed.
 
 - Then it will run through the program and create the video based on the settings in the profile on the MongoDB database and automatically upload and schedule the video at the date specified in the database (this is updated +1 day after each video is created).
