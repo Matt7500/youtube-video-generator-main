@@ -17,6 +17,7 @@ from google.oauth2.credentials import Credentials
 import shutil
 from faster_whisper import WhisperModel
 import sys
+import platform
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -446,32 +447,55 @@ def create_video(args, profile, temp_dir, output_dir):
         args.final_audio_file
     ]).strip())
     
-    # Add 10 seconds to the duration
     total_duration = audio_duration + 10
     logging.info(f"Audio duration: {audio_duration} seconds")
     logging.info(f"Total duration with 10s padding: {total_duration} seconds")
 
     final_video = f'{output_dir}/Videos/FinalVideo.mp4'
 
-    # Create video from image with audio duration plus 10 seconds
+    if profile.background_music and os.path.exists(profile.background_music):
+        # Create temporary file for mixed audio
+        mixed_audio = os.path.join(temp_dir, 'mixed_audio.wav')
+        
+        # Mix the audio files - main audio at 100% volume, background at 20%
+        ffmpeg_mix = [
+            'ffmpeg', '-y',
+            '-i', args.final_audio_file,
+            '-i', profile.background_music,
+            '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.2,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
+            '-map', '[aout]',
+            mixed_audio
+        ]
+        subprocess.run(ffmpeg_mix, check=True)
+        
+        # Use mixed audio in video creation
+        audio_input = mixed_audio
+    else:
+        audio_input = args.final_audio_file
+
+    # Create video with the appropriate audio
     command = [
         'ffmpeg', '-y',
         '-loop', '1',
+        '-framerate', '1',
         '-i', args.scene_images[0],
-        '-i', args.final_audio_file,
-        '-c:v', 'h264_nvenc',
-        '-preset', 'p2',
-        '-tune', 'hq',
-        '-b:v', '10M',
+        '-i', audio_input,
         '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-tune', 'stillimage',
         '-c:a', 'aac',
         '-b:a', '320k',
-        '-filter:a', 'volume=0.9',  # Set volume to 50%
+        '-shortest',
         '-t', str(total_duration),
         final_video
     ]
     
     run_ffmpeg_with_progress(command, total_duration, "Creating Video")
+
+    # Clean up temporary mixed audio file if it was created
+    if profile.background_music and os.path.exists(mixed_audio):
+        os.remove(mixed_audio)
 
     # Verify final duration
     final_duration = float(subprocess.check_output([
@@ -483,47 +507,164 @@ def create_video(args, profile, temp_dir, output_dir):
     logging.info(f"Final video duration: {final_duration} seconds")
 
 
-def create_simple_video(image_path, audio_file, output_path):
-    """
-    Creates a video from a single image and audio file.
-    The video duration matches the audio duration.
-    """
-    # Get audio duration
+def create_local_video(args, profile, output_dir):
+    """Optimized function for local video generation on both Windows and Mac"""
+    print("Starting local video generation...")
+    os.makedirs(f'{output_dir}/Videos', exist_ok=True)
+
+    # Get main audio duration
     audio_duration = float(subprocess.check_output([
         'ffprobe', '-v', 'error',
         '-show_entries', 'format=duration',
         '-of', 'default=noprint_wrappers=1:nokey=1',
-        audio_file
+        args.final_audio_file
     ]).strip())
+    
+    total_duration = audio_duration + 10
+    print(f"Audio duration: {audio_duration} seconds")
+    print(f"Total duration with 10s padding: {total_duration} seconds")
 
-    # Create video from image and audio
+    final_video = f'{output_dir}/Videos/FinalVideo.mp4'
+
+    # Handle background music if present
+    if profile.background_music and os.path.exists(profile.background_music):
+        # Create temporary file for mixed audio
+        mixed_audio = os.path.join(output_dir, 'mixed_audio.wav')
+        
+        # Mix audio with platform-optimized settings
+        ffmpeg_mix = [
+            'ffmpeg', '-y',
+            '-i', args.final_audio_file,
+            '-i', profile.background_music,
+            '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.12,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
+            '-map', '[aout]',
+            mixed_audio
+        ]
+        subprocess.run(ffmpeg_mix, check=True)
+        audio_input = mixed_audio
+    else:
+        audio_input = args.final_audio_file
+
+    # Check input image format and dimensions
+    probe_cmd = [
+        'ffprobe',
+        '-v', 'error',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height,pix_fmt',
+        '-of', 'json',
+        args.scene_images[0]
+    ]
+    
+    probe_result = json.loads(subprocess.check_output(probe_cmd).decode('utf-8'))
+    stream_info = probe_result['streams'][0]
+    
+    # Determine if we need to rescale or pad the image
+    needs_processing = (
+        stream_info['width'] != 1920 or
+        stream_info['height'] != 1080 or
+        stream_info.get('pix_fmt') != 'yuv420p'  # Most compatible pixel format
+    )
+
+    # Determine optimal video settings based on platform
+    system = platform.system().lower()
+    if system == 'darwin':  # macOS
+        hw_accel = []  # No hardware acceleration by default on Mac
+        if needs_processing:
+            vcodec = ['-c:v', 'h264']  # Only encode if necessary
+        else:
+            vcodec = ['-c:v', 'copy']  # Direct stream copy if possible
+    elif system == 'windows':
+        has_nvidia = shutil.which('nvidia-smi') is not None
+        hw_accel = ['-hwaccel', 'cuda'] if has_nvidia else []
+        if needs_processing:
+            vcodec = ['-c:v', 'h264_nvenc'] if has_nvidia else ['-c:v', 'h264']
+        else:
+            vcodec = ['-c:v', 'copy']
+    else:  # Linux or other
+        has_nvidia = shutil.which('nvidia-smi') is not None
+        hw_accel = ['-hwaccel', 'cuda'] if has_nvidia else []
+        if needs_processing:
+            vcodec = ['-c:v', 'h264_nvenc'] if has_nvidia else ['-c:v', 'h264']
+        else:
+            vcodec = ['-c:v', 'copy']
+
+    # Build the video processing command
     command = [
-        'ffmpeg', '-y', '-hwaccel', 'cuda',
-        '-loop', '1',                     # Loop the image
-        '-i', image_path,                 # Input 1: Image
-        '-i', audio_file,                 # Input 2: Audio
-        '-c:v', 'h264_nvenc',            # Use NVIDIA encoder
-        '-preset', 'p2',                  # Encoding preset
-        '-tune', 'hq',                    # High quality tuning
-        '-rc', 'vbr',                     # Variable bitrate
-        '-cq', '23',                      # Constant quality factor
-        '-b:v', '10M',                    # Video bitrate
-        '-maxrate', '15M',                # Maximum bitrate
-        '-bufsize', '30M',                # Buffer size
-        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30',
-        '-r', '30',                       # 30 fps
-        '-c:a', 'aac',                    # Audio codec
-        '-b:a', '320k',                   # Audio bitrate
-        '-filter:a', 'volume=0.5',  # Set volume to 50%
-        '-ar', '48000',                   # Audio sample rate
-        '-ac', '2',                       # 2 audio channels
-        '-shortest',                      # Match audio duration
-        '-t', str(audio_duration),        # Explicitly set duration to match audio
-        output_path
+        'ffmpeg', '-y'
+    ] + hw_accel + [
+        '-loop', '1',
+        '-framerate', '30',
+        '-i', args.scene_images[0],
+        '-i', audio_input
     ]
 
-    run_ffmpeg_with_progress(command, audio_duration, "Creating Simple Video")
+    # Add video processing only if needed
+    if needs_processing:
+        command.extend([
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2'
+        ])
+    
+    command.extend(vcodec + [
+        '-c:a', 'aac',
+        '-b:a', '320k',
+        '-shortest',
+        '-t', str(total_duration),
+        '-movflags', '+faststart',  # Optimize for web playback
+        final_video
+    ])
+    
+    print("Running FFmpeg command with the following settings:")
+    print(f"Hardware Acceleration: {'Yes' if hw_accel else 'No'}")
+    print(f"Video Processing Required: {'Yes' if needs_processing else 'No'}")
+    print(f"Video Codec: {vcodec}")
+    
+    run_ffmpeg_with_progress(command, total_duration, "Creating Local Video")
 
+    # Clean up temporary mixed audio file if it was created
+    if profile.background_music and os.path.exists(mixed_audio):
+        os.remove(mixed_audio)
+
+    # Add YouTube upload handling
+    if isinstance(profile.youtube_upload, dict) and profile.youtube_upload.get('enabled', False):
+        logging.info("Starting YouTube upload process...")
+        try:
+            # Extract all YouTube upload settings
+            thumbnail_path = f'{args.temp_dir}/thumbnail.png'
+            title = args.title
+            description = profile.youtube_upload.get('description', '')
+            tags = profile.youtube_upload.get('tags', [])
+            category = profile.youtube_upload.get('category', '22')
+            privacy_status = profile.youtube_upload.get('privacy_status', 'private')
+            
+            # Get the next scheduled upload date
+            next_upload_date_str = profile.youtube_upload.get('next_upload_date')
+            if not next_upload_date_str:
+                logging.error("No upload date provided in YouTube settings")
+                raise ValueError("Missing next_upload_date in YouTube settings")
+
+            video_id = upload_to_youtube(
+                video_file=final_video,
+                title=title,
+                description=description,
+                tags=tags,
+                category=category,
+                privacy_status=privacy_status,
+                credentials_info=json.loads(args.youtube_credentials),
+                publish_at=next_upload_date_str,
+                thumbnail_path=thumbnail_path
+            )
+
+            if video_id:
+                logging.info(f"Video successfully scheduled for upload to YouTube. Video ID: {video_id}")
+                logging.info(f"Scheduled publish time: {next_upload_date_str}")
+            else:
+                logging.error("Failed to upload video to YouTube - no video ID returned")
+                
+        except Exception as e:
+            logging.error(f"Failed to upload video to YouTube: {str(e)}", exc_info=True)
+            raise
+
+    return final_video
 
 def main(args):
     try:
@@ -573,10 +714,14 @@ def main(args):
         logging.info(f"Creating output directory: {output_dir}")
         os.makedirs(f'{output_dir}/Videos', exist_ok=True)
         
-        logging.info("Starting video creation...")
-        create_video(args, profile, temp_dir, output_dir)
-        
-        video_file = f'{output_dir}/Videos/FinalVideo.mp4'
+        # Choose between local or EC2 video generation
+        if args.use_local_generation:
+            logging.info("Starting local video generation...")
+            video_file = create_local_video(args, profile, output_dir)
+        else:
+            logging.info("Starting EC2 video generation...")
+            create_video(args, profile, temp_dir, output_dir)
+            video_file = f'{output_dir}/Videos/FinalVideo.mp4'
 
         if args.send_to_local:
             logging.info("Preparing video for local transfer...")
@@ -655,6 +800,8 @@ if __name__ == '__main__':
         parser.add_argument('--send_to_local', type=lambda x: x.lower() == 'true', required=True,
                             help='Whether to send the video back to local machine instead of uploading to YouTube')
         parser.add_argument('--temp_dir', required=True, help='Temporary directory for file operations')
+        parser.add_argument('--use_local_generation', type=lambda x: x.lower() == 'true', required=True,
+                            help='Whether to use local video generation instead of EC2')
 
         args = parser.parse_args()
         main(args)

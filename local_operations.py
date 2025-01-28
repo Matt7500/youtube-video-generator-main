@@ -542,37 +542,47 @@ def createTitles(story_text, finetune_model, max_retries=10):
     - Must be between 70 and 100 characters
     - Must include a comma
     """
-    for attempt in range(max_retries):
-        title = oai_client.chat.completions.create(
-            model=finetune_model,
-            max_tokens=4000,
-            messages=[
-                {"role": "system", "content": "You are tasked with creating a YouTube title for the given story. The title must be between 70 and 100 characters and include a comma."},
-                {"role": "user", "content": story_text},
-            ]
-        )
-        
-        title_text = title.choices[0].message.content.replace('"', '')
-        
-        # Add comma if missing (for horror stories)
-        if 'Horror' in story_text and ',' not in title_text:
-            title_text = title_text.replace(' ', ', ', 1)  # Add a comma after the first space
-        
-        # Check if title meets all criteria
-        if len(title_text) <= 100 and len(title_text) >= 70 and ',' in title_text:
-            print(f"Created valid title on attempt {attempt + 1}: {title_text}")
-            return title_text
-        else:
-            issues = []
-            if len(title_text) > 100:
-                issues.append("too long")
-            if ',' not in title_text:
-                issues.append("missing comma")
-            print(f"Title invalid ({', '.join(issues)}) on attempt {attempt + 1}, retrying...")
+    while True:  # Keep generating titles until user accepts one
+        for attempt in range(max_retries):
+            title = oai_client.chat.completions.create(
+                model=finetune_model,
+                max_tokens=4000,
+                messages=[
+                    {"role": "system", "content": "You are tasked with creating a YouTube title for the given story. The title must be between 70 and 100 characters and include a comma. The title must be told in first person in the past tense."},
+                    {"role": "user", "content": story_text},
+                ]
+            )
+            
+            title_text = title.choices[0].message.content.replace('"', '')
+            
+            # Add comma if missing (for horror stories)
+            if 'Horror' in story_text and ',' not in title_text:
+                title_text = title_text.replace(' ', ', ', 1)  # Add a comma after the first space
+            
+            # Check if title meets all criteria
+            if len(title_text) <= 100 and len(title_text) >= 70 and ',' in title_text:
+                # Use ANSI escape codes for red text
+                print(f"\033[91mGenerated title: {title_text}")
+                user_input = input("Accept this title? (y/n): \033[0m").lower()
+                
+                if user_input == 'y':
+                    print(f"Title accepted: {title_text}")
+                    return title_text
+                else:
+                    print("Generating new title...")
+                    break  # Break inner loop to generate new title
+            else:
+                issues = []
+                if len(title_text) > 100:
+                    issues.append("too long")
+                if ',' not in title_text:
+                    issues.append("missing comma")
+                print(f"Title invalid ({', '.join(issues)}) on attempt {attempt + 1}, retrying...")
     
-    # If we exceed max retries, truncate the last generated title
-    print(f"Warning: Could not generate valid title after {max_retries} attempts. Truncating...")
-    return title_text[:97] + "..."
+        # If we've exhausted max_retries without finding a valid title
+        if attempt == max_retries - 1:
+            print(f"Warning: Could not generate valid title after {max_retries} attempts. Truncating...")
+            return title_text[:97] + "..."
 
 def crop_image(input_path, output_path):
     with Image.open(input_path) as img:

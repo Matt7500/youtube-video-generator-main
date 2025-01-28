@@ -94,16 +94,17 @@ def write_detailed_scene_description(scene: str) -> str:
 
 def check_scene_consistency(new_scene_description: str, previous_scenes: List[str]) -> str:
     prompt = f"""
-    You are an expert story editor, compare the new scene description with the previous scenes and identify any continuity errors that are crucial to the progression the story.
+    You are an expert story editor, compare the new scene with the previous scenes and identify any continuity errors that are crucial to the progression the story.
     
     ## Ignore new elements or changes if they make sense in the context of the story progressing, do not label something an error just because it's different from the previous scene.
-    Your job is to make sure the story flows coherently and makes sense.
+
+    You must make sure the beginning of the scene flows smoothly with the previous scene seamlessly.
 
     ##Only provide fixes that can be fixed in the given scene, do not provide fixes that are for anything that could be fixed in a previous scene.
 
+
     Only write the most important continuity errors about the plot, characters, and story timeline.
-    If you find continuity errors then respond with them in a list from most important to least important with the most important ones labeled that.
-    Ignore any minor continuity errors that are there for the progression of the story or are minor details in the story, you are only looking for the most important details that are crucial to the plot of the story.
+    Ignore any minor continuity errors that are there for the progression of the story or are minor details in the story that aren't important, you are only looking for the most important details that are crucial to the plot of the story.
     Only respond with the list of continuity errors, do not write any comments.
     If you find no continuity errors with the previous scenes then only respond with: No Continuity Errors Found.
 
@@ -505,6 +506,7 @@ def create_outline(idea, num=12):
                         Each scene beat must include as much detail as you can about the events that happen in the scene.
                         Explicitly state the change of time between scenes if necessary.
                         Mention any locations by name.
+                        Create a slow build up of tension and suspense throughout the story.
                         A scene in the story is defined as when there is a change in the setting in the story.
                         The plot outline must contain {num} scenes.
                         The plot outline must follow and word things in a way that are from the protagonist's perspective, do not write anything from an outside character's perspective that the protagonist wouldn't know.
@@ -864,7 +866,7 @@ def callTune4(scene):
             while retry_count < max_retries:
                 try:
                     completion = oai_client.chat.completions.create(
-                        model='ft:gpt-4o-2024-08-06:personal:jgrupe-narration:AQl6Fs75',
+                        model='ft:gpt-4o-2024-08-06:personal:jgrupe-narration-ft:AQnm6wr1',
                         temperature=0.7,
                         messages=[{
                             "role": "system", 
@@ -873,20 +875,20 @@ def callTune4(scene):
                             "content": group}])
                     output = completion.choices[0].message.content
                     
-                    # Add success condition
-                    if len(output) <= len(group) * 2:  # Similar to dialogue check
-                        processed_groups.append(output)
+                    # Check if output is more than 1.5x the input length
+                    if len(output) <= len(group) * 1.5:
+                        processed_groups.append(replace_phrases(output))
                         break
                         
                     retry_count += 1
                     if retry_count == max_retries:
-                        processed_groups.append(group)  # Use original if all retries fail
+                        processed_groups.append(replace_phrases(group))  # Use original if all retries fail
                         
                 except Exception as e:
                     print(f"Error processing narrative group: {e}")
                     retry_count += 1
                     if retry_count == max_retries:
-                        processed_groups.append(group)
+                        processed_groups.append(replace_phrases(group))
             
     # Combine processed groups and apply word replacements
     final_text = '\n\n'.join(processed_groups)
@@ -920,27 +922,8 @@ def callTune5(scene):
     processed_groups = []
     for group in groups:
         if group.lstrip().startswith('"'):
-            # Process dialogue group
-            # Process dialogue group
-            max_retries = 3
-            retry_count = 0
-            while retry_count < max_retries:
-                completion = oai_client.chat.completions.create(
-                    model='ft:gpt-4o-2024-08-06:personal:jgrup-dialogue:ASBnHsCZ',
-                    temperature=0.7,
-                    messages=[{
-                        "role": "system", 
-                        "content": 'You are an expert copy editor tasked with re-writing the given text in Insomnia Stories unique voice and style.'},
-                        {"role": "user",
-                        "content": group}])
-                output = completion.choices[0].message.content
-                
-                if len(output) <= len(group) * 2:
-                    processed_groups.append(output)
-                    break
-                retry_count += 1
-                if retry_count == max_retries:
-                    processed_groups.append(group) # Use original if all retries fail
+            # Keep dialogue as-is
+            processed_groups.append(group)
         else:
             # Process narrative group 
             max_retries = 3
@@ -957,6 +940,7 @@ def callTune5(scene):
 Remove all absolute phrases relating to people or objects in the given text, except those that provide sensory information or describe physical sensations.
 Remove all metaphors in the given text.
 Remove any sentences that add unnecessary detail or reflection without contributing new information to the scene.
+Remove any phrases that mention the character's heart pounding or heart in their throat.
 
 If a paragraph doesn't need to be changed then just leave it as is in the returned text.
 
@@ -1124,6 +1108,8 @@ def replace_words(text):
         ' the midst of': '',
         ', and all-too-real': '',
         'an ancient-looking': 'an old',
+        ', my heart pounding in my chest': '',
+        ', my heart in my throat,': '',
         # Add other phrases here
     }
 
@@ -1180,6 +1166,33 @@ def write_scene_transition(scene1: str, scene2: str) -> str:
     except Exception as e:
         print(f"Error writing transition: {e}")
         return ""
+
+def replace_phrases(text):
+    phrase_bank = {
+        'I frowned. ': '',
+        ', frowning': '',
+        'I frowned and ': 'I',
+        '\n---': '',
+        '---\n': '',
+        'a grotesque': 'an ugly',
+        'long shadows': 'shadows',
+        ' the midst of': '',
+        ', and all-too-real': '',
+        'an ancient-looking': 'an old',
+        ', my heart pounding in my chest': '',
+        ', my heart in my throat,': '',
+        # Add other phrases here
+    }
+
+    # Replace phrases
+    for old, new in phrase_bank.items():
+        old = old.strip()
+        if old in text:
+            count = text.count(old)
+            if count > 0:
+                text = text.replace(old, new)
+
+    return text
 
 def main(username: str, channel_name: str):
     try:

@@ -554,6 +554,135 @@ def check_instance_packages():
             print(f"Stopping EC2 instance {instance_id}")
             ec2.stop_instances(InstanceIds=[instance_id])
 
+def create_local_video(username, channel_name, scene_images, scene_durations, final_audio_path, thumbnail_path, title):
+    """Create video locally using vid_gen.py"""
+    print(f"Creating local video for channel: {channel_name}")
+    
+    # Prepare YouTube upload settings
+    youtube_upload_settings = {
+        'enabled': settings.YOUTUBE_UPLOAD_ENABLED,
+        'description': settings.YOUTUBE_DESCRIPTION,
+        'tags': settings.YOUTUBE_TAGS,
+        'category': settings.YOUTUBE_CATEGORY,
+        'privacy_status': settings.YOUTUBE_PRIVACY_STATUS,
+        'next_upload_date': settings.NEXT_UPLOAD_DATE
+    }
+
+    # Get YouTube credentials if needed
+    if settings.YOUTUBE_UPLOAD_ENABLED:
+        youtube_credentials = get_youtube_credentials(channel_name)
+    else:
+        youtube_credentials = {}
+
+    # Create a temporary directory with unique UUID
+    temp_dir = f'/tmp/video_gen_{uuid.uuid4().hex}'
+    os.makedirs(temp_dir, exist_ok=True)
+
+    try:
+        # Copy files to temp directory
+        sftp = None
+        print(f"Setting up files in temporary directory")
+
+        # Copy scene images
+        remote_scene_images = []
+        if not settings.USE_PEXELS:
+            for i, image_path in enumerate(scene_images, 1):
+                remote_path = f'{temp_dir}/scene_{i}_background.png'
+                shutil.copy2(image_path, remote_path)
+                remote_scene_images.append(remote_path)
+                print(f'Scene {i} background image copied.')
+        else:
+            remote_scene_images = [f'{temp_dir}/scene_{i}_background.png' for i in range(1, len(scene_images) + 1)]
+
+        # Copy final audio file
+        remote_final_audio = f'{temp_dir}/Final.mp3'
+        shutil.copy2(final_audio_path, remote_final_audio)
+        print('Final audio file copied.')
+
+        # Copy thumbnail
+        remote_thumbnail = f'{temp_dir}/thumbnail.png'
+        shutil.copy2(thumbnail_path, remote_thumbnail)
+        print('Thumbnail image copied.')
+
+        # Copy other required files
+        remote_intro = "None"
+        remote_outro = "None"
+        remote_bg_music = "None"
+
+        if settings.INTRO_VIDEO and settings.INTRO_VIDEO.lower() != "null":
+            remote_intro = f'{temp_dir}/{os.path.basename(settings.INTRO_VIDEO)}'
+            shutil.copy2(settings.INTRO_VIDEO, remote_intro)
+            print('Intro video copied.')
+            
+        if settings.OUTRO_VIDEO and settings.OUTRO_VIDEO.lower() != "null":
+            remote_outro = f'{temp_dir}/{os.path.basename(settings.OUTRO_VIDEO)}'
+            shutil.copy2(settings.OUTRO_VIDEO, remote_outro)
+            print('Outro video copied.')
+            
+        if settings.BACKGROUND_MUSIC and settings.BACKGROUND_MUSIC.lower() != "null":
+            remote_bg_music = f'{temp_dir}/{os.path.basename(settings.BACKGROUND_MUSIC)}'
+            shutil.copy2(settings.BACKGROUND_MUSIC, remote_bg_music)
+            print('Background music copied.')
+
+        # Prepare arguments for vid_gen.py
+        args = type('Args', (), {
+            'profile_name': channel_name,
+            'scene_images': remote_scene_images,
+            'scene_durations': scene_durations,
+            'final_audio_file': remote_final_audio,
+            'add_subtitles': str(settings.ADD_SUBTITLES).lower(),
+            'audio_viz_config': json.dumps(settings.AUDIO_VIZ_CONFIG),
+            'subtitle_style': json.dumps(settings.SUBTITLE_STYLE),
+            'use_pexels': str(settings.USE_PEXELS).lower(),
+            'intro_video': remote_intro,
+            'outro_video': remote_outro,
+            'background_music': remote_bg_music,
+            'pexels_keywords': json.dumps(settings.PEXELS_KEYWORDS),
+            'pexels_api_key': settings.PEXELS_API_KEY,
+            'youtube_upload': json.dumps(youtube_upload_settings),
+            'youtube_credentials': json.dumps(youtube_credentials),
+            'title': title,
+            'send_to_local': 'true',
+            'temp_dir': temp_dir,
+            'use_local_generation': 'true'
+        })()
+
+        # Import vid_gen and create video
+        import vid_gen
+        profile = vid_gen.VideoProfile(
+            add_subtitles=settings.ADD_SUBTITLES,
+            profile_name=channel_name,
+            audio_viz_config=settings.AUDIO_VIZ_CONFIG,
+            subtitle_style=settings.SUBTITLE_STYLE,
+            use_pexels=settings.USE_PEXELS,
+            intro_video=remote_intro if remote_intro != "None" else None,
+            outro_video=remote_outro if remote_outro != "None" else None,
+            background_music=remote_bg_music if remote_bg_music != "None" else None,
+            pexels_keywords=settings.PEXELS_KEYWORDS,
+            pexels_api_key=settings.PEXELS_API_KEY,
+            youtube_upload=youtube_upload_settings
+        )
+
+        video_file = vid_gen.create_local_video(args, profile, temp_dir)
+        
+        if settings.YOUTUBE_UPLOAD_ENABLED:
+            # Update the next upload date in MongoDB
+            settings.update_next_upload_date(username, channel_name)
+
+        # Copy the final video to the output directory
+        output_dir = f'Output/{channel_name}/Videos'
+        os.makedirs(output_dir, exist_ok=True)
+        final_video_path = os.path.join(output_dir, 'FinalVideo.mp4')
+        shutil.copy2(video_file, final_video_path)
+
+        print(f"Local video creation completed for channel {channel_name}")
+        return final_video_path
+
+    finally:
+        # Clean up the temporary directory
+        print(f"Cleaning up temporary directory")
+        shutil.rmtree(temp_dir)
+
 if __name__ == "__main__":
     settings.initialize_settings('229202')
     check_instance_packages()

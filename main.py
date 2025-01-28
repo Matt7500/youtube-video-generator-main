@@ -50,15 +50,15 @@ def process_channel(username, channel_name):
     print(f"\n=== Starting process for channel: {channel_name} ===")
 
     # Delete the local channel folder
-    # local_channel_folder = f'Output/{channel_name}'
-    # if os.path.exists(local_channel_folder):
-    #     print(f"Deleting contents of the local channel folder for {channel_name}")
-    #     shutil.rmtree(local_channel_folder)
-    #     print(f"Successfully deleted local channel folder contents for {channel_name}")
+    local_channel_folder = f'Output/{channel_name}'
+    if os.path.exists(local_channel_folder):
+        print(f"Deleting contents of the local channel folder for {channel_name}")
+        shutil.rmtree(local_channel_folder)
+        print(f"Successfully deleted local channel folder contents for {channel_name}")
 
     try:
         print("Step 1: Calling story_writer.main...")
-        result = story_writer.main2(username, channel_name)
+        result = story_writer.main(username, channel_name)
         
         story, scenes, story_idea = result
         print(f"Successfully unpacked story ({len(story)} chars), scenes ({len(scenes)} scenes), and story idea")
@@ -83,7 +83,16 @@ def process_channel(username, channel_name):
             if scene_images and scene_audio_files and scene_durations and final_audio_path and thumbnail_path and title:
                 print("\nStep 4: Creating output directory...")
                 os.makedirs(f'Output/{channel_name}', exist_ok=True)
-                print(f"Channel {channel_name} processed successfully.")
+                
+                if settings.USE_LOCAL_GENERATION:
+                    print("Using local video generation...")
+                    local_manager.create_local_video(username, channel_name, scene_images, scene_durations, final_audio_path, thumbnail_path, title)
+                    print(f"Channel {channel_name} processed successfully.")
+                else:
+                    print("Using EC2 video generation...")
+                    local_manager.create_video_on_instance(username, channel_name, scene_images, scene_durations, final_audio_path, thumbnail_path, title)
+                    print(f"Channel {channel_name} processed successfully.")
+                
                 return channel_name, scene_images, scene_audio_files, scene_durations, final_audio_path, thumbnail_path, title
             else:
                 print("\nError: One or more required components are missing")
@@ -139,9 +148,9 @@ def main(username, num_videos_per_channel):
             break
         for _ in range(num_videos_per_channel):
             result = process_channel(username, channel)
-            
             if result:
-                generate_video_on_ec2(username, channel, result)
+                if not settings.USE_LOCAL_GENERATION:
+                    generate_video_on_ec2(username, channel, result)
                 processed_channels.append(result)
 
     print("All selected videos have been generated successfully.")
