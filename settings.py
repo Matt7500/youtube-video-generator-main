@@ -67,9 +67,14 @@ AWS_SECRET_KEY = None
 # AWS region for the EC2 instance
 REGION = None
 
+# Video Generation Settings
+USE_LOCAL_GENERATION = True  # Default to False for EC2 generation
+
 # MongoDB connection
 def get_user_settings(username: str) -> Dict[str, Any]:
-    client = MongoClient('***************', tlsCAFile=certifi.where()
+    client = MongoClient(
+        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+        tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
     collection = db["everything"]
@@ -88,7 +93,9 @@ def get_user_settings(username: str) -> Dict[str, Any]:
     return user_settings
 
 def get_channel_settings(username, channel_name):
-    client = MongoClient('***************', tlsCAFile=certifi.where()
+    client = MongoClient(
+        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+        tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
     collection = db["everything"]
@@ -203,7 +210,7 @@ def initialize_channel_settings(username: str, channel_name: str):
 def update_next_upload_date(username: str, channel_name: str):
     """Update the next_upload_date by adding 1 day"""
     client = MongoClient(
-        '***************',
+        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
         tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
@@ -229,7 +236,7 @@ def update_next_upload_date(username: str, channel_name: str):
 def get_channel_names(username: str) -> list:
     """Get a list of all channel names for a given username"""
     client = MongoClient(
-        '***************',
+        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
         tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
@@ -245,7 +252,9 @@ def get_channel_names(username: str) -> list:
     return list(channels.keys())
 
 def load_story_profiles():
-    client = MongoClient('***************',tlsCAFile=certifi.where()
+    client = MongoClient(
+        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+        tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
     collection = db["video-types"]
@@ -268,7 +277,9 @@ def copy_channels_between_users(from_username: str, to_username: str):
         from_username (str): Username to copy channels from
         to_username (str): Username to copy channels to
     """
-    client = MongoClient('***************', tlsCAFile=certifi.where()
+    client = MongoClient(
+        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+        tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
     collection = db["everything"]
@@ -302,7 +313,7 @@ def duplicate_channel(username: str, source_channel: str, new_channel_name: str)
         new_channel_name (str): Name for the new duplicate channel
     """
     client = MongoClient(
-        '***************',
+        'mongodb+srv://TheRealceCream:xijj69DyfnQOXD9d@cluster0.xvcs7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
         tlsCAFile=certifi.where()
     )
     db = client['YouTube-Dashboard']
