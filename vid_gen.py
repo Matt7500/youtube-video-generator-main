@@ -462,7 +462,7 @@ def create_video(args, profile, temp_dir, output_dir):
             'ffmpeg', '-y',
             '-i', args.final_audio_file,
             '-i', profile.background_music,
-            '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.2,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
+            '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.05,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
             '-map', '[aout]',
             mixed_audio
         ]
@@ -536,7 +536,7 @@ def create_local_video(args, profile, output_dir):
             'ffmpeg', '-y',
             '-i', args.final_audio_file,
             '-i', profile.background_music,
-            '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.12,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
+            '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.05,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
             '-map', '[aout]',
             mixed_audio
         ]

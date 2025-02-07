@@ -70,6 +70,8 @@ REGION = None
 # Video Generation Settings
 USE_LOCAL_GENERATION = True  # Default to False for EC2 generation
 
+OR_REASONING_MODEL = 'openai/o3-mini'
+
 # MongoDB connection
 def get_user_settings(username: str) -> Dict[str, Any]:
     client = MongoClient(

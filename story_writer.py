@@ -94,31 +94,32 @@ def write_detailed_scene_description(scene: str) -> str:
 
 def check_scene_consistency(new_scene_description: str, previous_scenes: List[str]) -> str:
     prompt = f"""
-    You are an expert story editor, compare the new scene with the previous scenes and identify any continuity errors that are crucial to the progression the story.
+    Compare the new scene with the previous scenes and identify any continuity errors that are crucial to the progression the story.
     
-    ## Ignore new elements or changes if they make sense in the context of the story progressing, do not label something an error just because it's different from the previous scene.
+    ## Ignore new elements or changes if they make sense in the context of the story progressing, do not label something an error just because it's different from the previous scene or a detail isn't explicitly mentioned.
 
     You must make sure the beginning of the scene flows smoothly with the previous scene seamlessly.
 
     ##Only provide fixes that can be fixed in the given scene, do not provide fixes that are for anything that could be fixed in a previous scene.
 
+    ##Ignore any errors that are minor and can be inferred from the previous scenes. Every single detail does not need to be mentioned every time.
 
     Only write the most important continuity errors about the plot, characters, and story timeline.
     Ignore any minor continuity errors that are there for the progression of the story or are minor details in the story that aren't important, you are only looking for the most important details that are crucial to the plot of the story.
     Only respond with the list of continuity errors, do not write any comments.
-    If you find no continuity errors with the previous scenes then only respond with: No Continuity Errors Found.
+    If you find no continuity errors with the previous scenes then only respond with: "No Continuity Errors Found." DO NOT RESPOND WITH ANYTHING ELSE.
 
     New scene:
     {new_scene_description}
 
-    Previous scenes (most recent 4):
+    Previous scenes (most recent 2):
     {' '.join(previous_scenes)}
 
     Provide the continuity errors as a list in order of importance to the story. Describe how to fix those errors in the scene.
     """
 
     response = or_client.chat.completions.create(
-        model=settings.OR_MODEL,
+        model='openai/o3-mini',
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
     )
@@ -143,6 +144,8 @@ def rewrite_scene(original_scene: str, scene_beat: str, inconsistencies: str) ->
 
     Rewrite the scene to maintain story continuity and address these issues. Make sure to resolve ALL inconsistencies in your rewrite.
     The rewrite should maintain the same general length and level of detail as the original scene.
+    
+    ##DO NOT WRITE ANY COMMENTS ONLY RETURN THE SCENE.
     """
 
     response = or_client.chat.completions.create(
@@ -238,6 +241,7 @@ def write_scene(scene_beat: str, characters: str, num, total_scenes) -> str:
     - Write the dialogue in their own paragraphs, do not include the dialogue in the same paragraph as the narration.
     - Write everything that the narrator sees, hears, and everything that happens in the scene.
     - Write the entire scene and include everything in the scene beat given, do not leave anything out.
+    - Use the character's pronouns if you don't write the character's name. Avoid using they/them pronouns, use the character's pronouns instead.
     
     # Pacing and Suspense
     - Maintain steady, escalating suspense
@@ -285,8 +289,8 @@ def write_scene(scene_beat: str, characters: str, num, total_scenes) -> str:
             
             while attempt < max_attempts:
                 # Get detailed description and check consistency
-                detailed_scene = write_detailed_scene_description(written_scene)
-                inconsistencies = check_scene_consistency(detailed_scene, [write_detailed_scene_description(prev) for prev in previous_scenes])
+                # detailed_scene = write_detailed_scene_description(written_scene)
+                inconsistencies = check_scene_consistency(written_scene, previous_scenes)
                 
                 # If no inconsistencies found, return the scene
                 if not inconsistencies or "No Continuity Errors Found" in inconsistencies:
@@ -332,9 +336,8 @@ def verify_scene_fixes(rewritten_scene: str, original_issues: str) -> str:
     """
 
     response = or_client.chat.completions.create(
-        model=settings.OR_MODEL,
+        model='openai/o3-mini',
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
     )
 
     verification_result = response.choices[0].message.content
@@ -570,10 +573,11 @@ def characters(outline):
                         f"""## Instructions
                         
                         Using the given story outline, write short character descriptions for all the characters in the story in the following format:
-                        <character name='(Character Name)' aliases='(Character Alias)'>(Character description)</character>
+                        <character name='(Character Name)' aliases='(Character Alias)', pronouns='(Character Pronouns)'>(Character description)</character>
 
                         The character alias is what the other characters in the story will call that character in the story such as their first name.
                         For the Protagonist's alias you must create a name that other characters will call them in the story.
+                        The pronouns are what you will use to refer to the character as in the story when not writing their name.
                         The character description must only describe their appearance and their personality DO NOT write what happens to them in the story.
                         Only return the character descriptions without any comments.
         
@@ -836,59 +840,87 @@ def callTune4(scene):
     # Process each group with appropriate fine-tuning
     processed_groups = []
     for group in groups:
-        if '"' in group:
+        if group.lstrip().startswith('"'):
+            # Keep dialogue as is
             processed_groups.append(group)
-            # Process dialogue group
-            # max_retries = 3
-            # retry_count = 0
-            # while retry_count < max_retries:
-            #     completion = oai_client.chat.completions.create(
-            #         model='ft:gpt-4o-2024-08-06:personal:jgrup-dialogue:ASBnHsCZ',
-            #         temperature=0.7,
-            #         messages=[{
-            #             "role": "system", 
-            #             "content": 'You are an expert copy editor tasked with re-writing the given text in Insomnia Stories unique voice and style.'},
-            #             {"role": "user",
-            #             "content": group}])
-            #     output = completion.choices[0].message.content
-                
-            #     if len(output) <= len(group) * 2:
-            #         processed_groups.append(output)
-            #         break
-            #     retry_count += 1
-            #     if retry_count == max_retries:
-            #         processed_groups.append(group) # Use original if all retries fail
         else:
-            # Process narrative group 
-            max_retries = 3
-            retry_count = 0
+            # Split narrative into smaller chunks if too long
+            narrative_paragraphs = [p.strip() for p in group.split('\n\n') if p.strip()]
             
-            while retry_count < max_retries:
-                try:
-                    completion = oai_client.chat.completions.create(
-                        model='ft:gpt-4o-2024-08-06:personal:jgrupe-narration-ft:AQnm6wr1',
-                        temperature=0.7,
-                        messages=[{
-                            "role": "system", 
-                            "content": 'You are an expert copy editor tasked with re-writing the given text in Insomnia Stories unique voice and style.'},
-                            {"role": "user",
-                            "content": group}])
-                    output = completion.choices[0].message.content
+            if len(narrative_paragraphs) > 5:
+                # Process in chunks of 5 paragraphs
+                chunk_size = 5
+                chunks = [narrative_paragraphs[i:i + chunk_size] for i in range(0, len(narrative_paragraphs), chunk_size)]
+                
+                processed_chunks = []
+                for chunk in chunks:
+                    chunk_text = '\n\n'.join(chunk)
+                    # Process each chunk
+                    max_retries = 3
+                    retry_count = 0
                     
-                    # Check if output is more than 1.5x the input length
-                    if len(output) <= len(group) * 1.5:
+                    while retry_count < max_retries:
+                        try:
+                            completion = oai_client.chat.completions.create(
+                                model='ft:gpt-4o-2024-08-06:personal:jgrupe-narration-ft:AQnm6wr1',
+                                temperature=0.7,
+                                messages=[{
+                                    "role": "system", 
+                                    "content": 'You are an expert copy editor tasked with re-writing the given text in Insomnia Stories unique voice and style.'},
+                                    {"role": "user",
+                                    "content": chunk_text}])
+                            output = completion.choices[0].message.content
+                            
+                            # Check if output is too long or matches input
+                            if len(output) > len(chunk_text) * 1.5 or output.strip() == chunk_text.strip():
+                                retry_count += 1
+                                if retry_count == max_retries:
+                                    processed_chunks.append(replace_phrases(chunk_text))
+                                continue
+                                
+                            processed_chunks.append(replace_phrases(output))
+                            break
+                                
+                        except Exception as e:
+                            print(f"Error processing narrative chunk: {e}")
+                            retry_count += 1
+                            if retry_count == max_retries:
+                                processed_chunks.append(replace_phrases(chunk_text))
+                
+                # Combine processed chunks
+                processed_groups.append('\n\n'.join(processed_chunks))
+            else:
+                # Process short narrative as before
+                max_retries = 3
+                retry_count = 0
+                
+                while retry_count < max_retries:
+                    try:
+                        completion = oai_client.chat.completions.create(
+                            model='ft:gpt-4o-2024-08-06:personal:jgrupe-narration-ft:AQnm6wr1',
+                            temperature=0.7,
+                            messages=[{
+                                "role": "system", 
+                                "content": 'You are an expert copy editor tasked with re-writing the given text in Insomnia Stories unique voice and style.'},
+                                {"role": "user",
+                                "content": group}])
+                        output = completion.choices[0].message.content
+                        
+                        # Check if output is too long or matches input
+                        if len(output) > len(group) * 1.5 or output.strip() == group.strip():
+                            retry_count += 1
+                            if retry_count == max_retries:
+                                processed_groups.append(replace_phrases(group))
+                            continue
+                            
                         processed_groups.append(replace_phrases(output))
                         break
-                        
-                    retry_count += 1
-                    if retry_count == max_retries:
-                        processed_groups.append(replace_phrases(group))  # Use original if all retries fail
-                        
-                except Exception as e:
-                    print(f"Error processing narrative group: {e}")
-                    retry_count += 1
-                    if retry_count == max_retries:
-                        processed_groups.append(replace_phrases(group))
+                            
+                    except Exception as e:
+                        print(f"Error processing narrative group: {e}")
+                        retry_count += 1
+                        if retry_count == max_retries:
+                            processed_groups.append(replace_phrases(group))
             
     # Combine processed groups and apply word replacements
     final_text = '\n\n'.join(processed_groups)
